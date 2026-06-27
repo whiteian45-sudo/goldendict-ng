@@ -828,23 +828,6 @@ MainWindow::MainWindow( Config::Class & cfg_ ):
            this,
            &MainWindow::proxyAuthentication );
 
-  // Defer dictionary loading so the window appears first
-  QTimer::singleShot( 0, this, [ this ]() {
-    makeDictionaries();
-    // Let the UI breathe before deferred init
-    QTimer::singleShot( 3000, this, [ this ]() {
-      doDeferredInit( dictionaries );
-      updateStatusLine();
-    } );
-  } );
-
-  // After we have dictionaries and groups, we can populate history
-  //  historyChanged();
-
-  setWindowTitle( "GoldenDict-ng" );
-
-  // Create tab list menu
-  createTabList();
 
 #if defined( Q_OS_MAC )
   defaultInterfaceStyle = "Fusion";
@@ -857,10 +840,6 @@ MainWindow::MainWindow( Config::Class & cfg_ ):
                      cfg.preferences.darkMode,
                      cfg.preferences.interfaceStyle );
 
-  // Create and show the initial welcome tab
-  history.enableAdd( false );
-  createNewTab( true, ArticleMaker::welcomeWord() )->load( QUrl( "gdinternal://welcome-page" ) );
-  history.enableAdd( cfg.preferences.storeHistory );
 
   // restore should be called after all UI initialized but not necessarily after show()
   // This must be called before show() as of Qt6.5 on Windows, not sure if it is a bug
@@ -871,13 +850,32 @@ MainWindow::MainWindow( Config::Class & cfg_ ):
   if ( cfg.mainWindowGeometry.size() ) {
     restoreGeometry( cfg.mainWindowGeometry );
   }
-
-  // Show window unless it is configured not to
+  // Show window immediately with loading indicator
   if ( !cfg.preferences.enableTrayIcon || !cfg.preferences.startToTray ) {
+    mainStatusBar->showMessage( tr( "Loading dictionaries..." ) );
     show();
     focusTranslateLine();
+    QGuiApplication::processEvents();
   }
 
+  // Load dictionaries (blocking, but window is already visible)
+  makeDictionaries();
+
+  // Deferred init after dictionary loading
+  QTimer::singleShot( 3000, this, [ this ]() {
+    doDeferredInit( dictionaries );
+    updateStatusLine();
+  } );
+
+  setWindowTitle( "GoldenDict-ng" );
+
+  // Create tab list menu
+  createTabList();
+
+  // Create welcome tab
+  history.enableAdd( false );
+  createNewTab( true, ArticleMaker::welcomeWord() )->load( QUrl( "gdinternal://welcome-page" ) );
+  history.enableAdd( cfg.preferences.storeHistory );
   // Scanpopup related
   // Deferred initialization until first use or if scanning is enabled
   // Use a delayed call to avoid blocking the main window's initial show-up
@@ -942,6 +940,13 @@ MainWindow::MainWindow( Config::Class & cfg_ ):
     toggleMenuBarTriggered( false );
   }
 
+  // makeDictionaries() didn't do deferred init - we do it here, at the end.
+  // Use a delay to let the UI breathe first
+  QTimer::singleShot( 3000, this, [ this ]() {
+    doDeferredInit( dictionaries );
+  } );
+
+  updateStatusLine();
 
 #ifdef Q_OS_MAC
   if ( cfg.preferences.startWithScanPopupOn && !MacMouseOver::isAXAPIEnabled() ) {
