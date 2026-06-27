@@ -828,7 +828,15 @@ MainWindow::MainWindow( Config::Class & cfg_ ):
            this,
            &MainWindow::proxyAuthentication );
 
-  makeDictionaries();
+  // Defer dictionary loading so the window appears first
+  QTimer::singleShot( 0, this, [ this ]() {
+    makeDictionaries();
+    // Let the UI breathe before deferred init
+    QTimer::singleShot( 3000, this, [ this ]() {
+      doDeferredInit( dictionaries );
+      updateStatusLine();
+    } );
+  } );
 
   // After we have dictionaries and groups, we can populate history
   //  historyChanged();
@@ -934,13 +942,6 @@ MainWindow::MainWindow( Config::Class & cfg_ ):
     toggleMenuBarTriggered( false );
   }
 
-  // makeDictionaries() didn't do deferred init - we do it here, at the end.
-  // Use a delay to let the UI breathe first
-  QTimer::singleShot( 3000, this, [ this ]() {
-    doDeferredInit( dictionaries );
-  } );
-
-  updateStatusLine();
 
 #ifdef Q_OS_MAC
   if ( cfg.preferences.startWithScanPopupOn && !MacMouseOver::isAXAPIEnabled() ) {
